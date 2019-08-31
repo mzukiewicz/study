@@ -11,6 +11,8 @@ This will be converted into CSS automatically.
 @import "buttons";
 @import "panels";
 @import "forms";
+@import "tables";
+@import "alerts";
 
 @import "header";
 @import "footer";
@@ -20,3 +22,14 @@ This will be converted into CSS automatically.
 @import "page_core_index";
 @import "page_core_dashboard";
 @import "page_core_about";
+
+// User
+@import "page_user_settings";
+@import "page_user_notifications";
+
+// Calendar
+@import "page_calendar_calendar";
+@import "page_calendar_task";
+
+// Guide
+@import "page_guide_index";
