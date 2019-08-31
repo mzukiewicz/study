@@ -1,14 +1,13 @@
-# Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 import os
-from collections import defaultdict
 import yaml
 try:
     from yaml import CLoader as Loader, CDumper as Dumper
 except ImportError:
     from yaml import Loader, Dumper
+import markdown
 from study.utils import generate_random_string
 
-
+# Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -37,12 +36,23 @@ CONFIG_DEFAULTS = {
     'allowed_hosts': [
         '*',
     ],
+    'graph_api': {
+        'appid': '',
+        'appsecret': '',
+    }
 }
 CONFIG_FILE = os.path.join(BASE_DIR, 'config.yml')
 CONFIG_ROOT = dict()
 
 
 def load_config(config_file=None):
+    """
+    Load the configuration from a file
+
+    :param config_file: Path to a YAML configuration file.
+                        If not specified default path from `settings.CONFIG_FILE` will be used
+    :type config_file: str
+    """
     global CONFIG_ROOT
     config_file = config_file or CONFIG_FILE
 
@@ -51,6 +61,15 @@ def load_config(config_file=None):
 
 
 def save_config(destination_file=None, defaults=False):
+    """
+    Save the configuration into a YAML configuration file.
+
+    :param destination_file: Path to a YAML configuration file where configuration will be saved.
+        If not specified default path from `settings.CONFIG_FILE` will be used.
+    :type destination_file: str
+    :param defaults: If True the default configuration dictionary from `settings.CONFIG_DEFAULTS`
+        will be saved instead of real configuration dictionary.
+    """
     destination_file = destination_file or CONFIG_FILE
     config = CONFIG_ROOT if not defaults else CONFIG_DEFAULTS
 
@@ -71,11 +90,13 @@ else:
 # #+---------------------------------------+#
 # ###########################################
 
+SITE_URL = CONFIG_ROOT.get('site_url')
 SECRET_KEY = CONFIG_ROOT.get('secret_key')
 DEBUG = CONFIG_ROOT.get('debug_mode', False)
 ALLOWED_HOSTS = CONFIG_ROOT.get('allowed_hosts', [])
 ROOT_URLCONF = 'study.urls'
 WSGI_APPLICATION = 'study.wsgi.application'
+LOGIN_URL = '/user/login/'
 
 
 # ###########################################
@@ -85,12 +106,41 @@ WSGI_APPLICATION = 'study.wsgi.application'
 # ###########################################
 
 INSTALLED_APPS = (
+    # ---- Study internal applications ----
+
+    # Core application
+    'core',
+
+    # User application
+    'user',
+
+    # Cal application
+    'cal',
+
+    # Mail application
+    'mail',
+
+    # Guide application
+    'guide',
+
+    # ---- Django applications ----
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+
+    # ---- Third party applications ----
+
+    # python-social-auth
+    'social.apps.django_app.default',
+
+    # django-celery
+    'djcelery',
+
+    # django-markdown
+    'django_markdown',
 )
 
 MIDDLEWARE_CLASSES = (
@@ -104,6 +154,16 @@ MIDDLEWARE_CLASSES = (
     'django.middleware.security.SecurityMiddleware',
 )
 
+# List of the backends used to perform user authentication
+AUTHENTICATION_BACKENDS = (
+    # python-social-auth backends
+    'social.backends.facebook.FacebookOAuth2',
+
+    # Django backend based on default user model
+    'django.contrib.auth.backends.ModelBackend',
+)
+
+AUTH_USER_MODEL = 'user.UserProfile'
 
 # ###########################################
 # #+---------------------------------------+#
@@ -111,19 +171,26 @@ MIDDLEWARE_CLASSES = (
 # #+---------------------------------------+#
 # ###########################################
 
+
 def get_template_loaders():
+    """
+    Get the list of template loaders depending if debugging mode is enabled.
+
+    :returns: The list of template loaders
+    :rtype: list
+    """
     if DEBUG:
         return [
             'django.template.loaders.filesystem.Loader',
-            'django.template.loaders.app_directories.Loader'
+            'django.template.loaders.app_directories.Loader',
         ]
 
     return [
-            ('django.template.loaders.cached.Loader', (
-                'django.template.loaders.filesystem.Loader',
-                'django.template.loaders.app_directories.Loader',
-            ))
-        ],
+        ('django.template.loaders.cached.Loader', (
+            'django.template.loaders.filesystem.Loader',
+            'django.template.loaders.app_directories.Loader',
+        )),
+    ]
 
 
 TEMPLATES = [
@@ -135,6 +202,11 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+
+                # Internal
+                'user.context_processors.notifications_count',
+
+                # python-social-auth
                 'social.apps.django_app.context_processors.backends',
                 'social.apps.django_app.context_processors.login_redirect',
             ],
@@ -142,7 +214,6 @@ TEMPLATES = [
         },
     },
 ]
-
 
 
 # ###########################################
@@ -262,13 +333,13 @@ LOGGING = {
                 'file',
             },
             'level': 'DEBUG',
-            'propagate': False,
+            'propagate': True,
         },
         'django.db.backends': {
             'handlers': {
                 'console',
             },
-            'level': 'INFO',
+            'level': 'DEBUG',
             'propagate': True,
         },
         '': {
@@ -288,7 +359,7 @@ LOGGING = {
 # #+---------------------------------------+#
 # ###########################################
 
-LANGUAGE_CODE = 'pl-pl'
+LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'Europe/Warsaw'
 USE_I18N = True
 USE_L10N = True
@@ -302,4 +373,96 @@ USE_TZ = True
 # ###########################################
 
 STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'static')
+STATICFILES_DIRS = (
+    os.path.join(BASE_DIR, 'static/core'),
+)
 MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+
+# ###########################################
+# #+---------------------------------------+#
+# #|               Messages                |#
+# #+---------------------------------------+#
+# ###########################################
+
+MESSAGE_STORAGE = 'django.contrib.messages.storage.session.SessionStorage'
+
+
+# ###########################################
+# #+---------------------------------------+#
+# #|                 Email                 |#
+# #+---------------------------------------+#
+# ###########################################
+
+_CONFIG_SMTP = CONFIG_ROOT.get('smtp')
+
+EMAIL_HOST = _CONFIG_SMTP.get('host')
+EMAIL_PORT = _CONFIG_SMTP.get('port')
+
+
+# ###########################################
+# #+---------------------------------------+#
+# #|          Python Social Auth           |#
+# #+---------------------------------------+#
+# ###########################################
+
+_CONFIG_GRAPH = CONFIG_ROOT.get('graph_api')
+
+SOCIAL_AUTH_USER_MODEL = 'user.UserProfile'
+SOCIAL_AUTH_ADMIN_USER_SEARCH_FIELDS = ['username', 'email']
+SOCIAL_AUTH_FACEBOOK_KEY = _CONFIG_GRAPH.get('appid')
+SOCIAL_AUTH_FACEBOOK_SECRET = _CONFIG_GRAPH.get('appsecret')
+SOCIAL_AUTH_FACEBOOK_SCOPE = ['email']
+SOCIAL_AUTH_FACEBOOK_PROFILE_EXTRA_PARAMS = {
+    'locale': 'en_US',
+    'fields': 'id, email, age_range, first_name, last_name',
+}
+SOCIAL_AUTH_FACEBOOK_USERNAME_IS_FULL_EMAIL = True
+SOCIAL_AUTH_FACEBOOK_UUID_LENGTH = 16
+SOCIAL_AUTH_PIPELINE = (
+    'social.pipeline.social_auth.social_details',
+    'social.pipeline.social_auth.social_uid',
+    'social.pipeline.social_auth.auth_allowed',
+    'social.pipeline.social_auth.social_user',
+
+    'user.pipelines.get_username',
+
+    'social.pipeline.social_auth.associate_by_email',
+
+    'user.pipelines.create_user',
+
+    'social.pipeline.social_auth.associate_user',
+    'social.pipeline.social_auth.load_extra_data',
+    'social.pipeline.user.user_details',
+
+    'user.pipelines.save_avatar',
+    'core.pipelines.debug',
+)
+SOCIAL_AUTH_LOGIN_REDIRECT_URL = '/dashboard/'
+SOCIAL_AUTH_LOGIN_ERROR_URL = '/user/login/error/'
+SOCIAL_AUTH_LOGIN_URL = '/user/login/'
+SOCIAL_AUTH_NEW_ASSOCIATION_REDIRECT_URL = '/user/settings/'
+SOCIAL_AUTH_DISCONNECT_REDIRECT_URL = '/user/settings/'
+SOCIAL_AUTH_INACTIVE_USER_URL = '/user/login/inactive/'
+
+
+# ###########################################
+# #+---------------------------------------+#
+# #|          Python Social Auth           |#
+# #+---------------------------------------+#
+# ###########################################
+
+CELERY_RESULT_BACKEND='djcelery.backends.database:DatabaseBackend'
+
+
+# ###########################################
+# #+---------------------------------------+#
+# #|          django-markupfield           |#
+# #+---------------------------------------+#
+# ###########################################
+
+MARKUP_FIELD_TYPES = (
+    ('markdown', markdown.markdown),
+)
